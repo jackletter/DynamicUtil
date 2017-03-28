@@ -17,6 +17,13 @@ namespace DynamicUtil
     /// </summary>
     public class RemoteUtil : MarshalByRefObject
     {
+		/// <summary>跨域调用使生命周期无限
+        /// </summary>
+        /// <returns>null</returns>
+        public override object InitializeLifetimeService()
+        {
+            return null; // makes the object live indefinitely
+        }
 
         /// <summary>锁
         /// </summary>
