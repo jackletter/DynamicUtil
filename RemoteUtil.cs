@@ -17,7 +17,7 @@ namespace DynamicUtil
     /// </summary>
     public class RemoteUtil : MarshalByRefObject
     {
-		/// <summary>跨域调用使生命周期无限
+        /// <summary>跨域调用使生命周期无限
         /// </summary>
         /// <returns>null</returns>
         public override object InitializeLifetimeService()
@@ -72,8 +72,13 @@ namespace DynamicUtil
         public Hashtable InvokeDll(string dllFullName, string classFullName, string methodName, Type[] paraTypes, object[] args)
         {
             Assembly assem = Assembly.Load(dllFullName);
-            //Assembly assem = Assembly.LoadFrom(dllFullName);
             return InvokeDll(assem, classFullName, methodName, paraTypes, args);
+        }
+
+        public Hashtable InvokeDll(string typename, string methodName, Type[] paraTypes, object[] args)
+        {
+            Type t = Type.GetType(typename);
+            return InvokeDll(t, methodName, paraTypes, args);
         }
 
         /// <summary>动态调用指定程序集的指定类指定方法

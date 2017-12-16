@@ -63,8 +63,12 @@ namespace DynamicUtil
         /// <param name="appDomainName">新创建的程序域的名字</param>
         /// <param name="shadowSearchPath">影子加载和程序集搜索的路径</param>
         /// <returns></returns>
-        private static AppDomain CreateShadowAppDomain(string appDomainName, string shadowSearchPath)
+        private static AppDomain CreateShadowAppDomain(string appDomainName, string shadowSearchPath, string appconfigpath = null)
         {
+            if (string.IsNullOrWhiteSpace(appDomainName) || appDomainName.Length > 240)
+            {
+                throw new Exception("应用程序域名称不能太长,也不能为空！");
+            }
             string path = "";
             string[] paths = (shadowSearchPath ?? "").Split(new char[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
             for (int i = 0; i < paths.Length; i++)
@@ -95,6 +99,10 @@ namespace DynamicUtil
             Evidence adevidence = AppDomain.CurrentDomain.Evidence;
             //复制配置文件
             setup.ConfigurationFile = AppDomain.CurrentDomain.SetupInformation.ConfigurationFile;
+            if (!string.IsNullOrWhiteSpace(appconfigpath))
+            {
+                setup.ConfigurationFile = appconfigpath;
+            }
             //复制搜索策略
             setup.PrivateBinPathProbe = AppDomain.CurrentDomain.SetupInformation.PrivateBinPathProbe;
             setup.ApplicationBase = AppDomain.CurrentDomain.SetupInformation.ApplicationBase;
@@ -134,6 +142,7 @@ namespace DynamicUtil
 
         private static void AddWatch(object sender, AssemblyLoadEventArgs args)
         {
+            Console.WriteLine("监视到了加载程序集:" + args.LoadedAssembly.CodeBase);
             FileSystemWatcher watch = new FileSystemWatcher();
             string fileAbsPath = args.LoadedAssembly.CodeBase.Replace(@"file:///", "");
             string fileName = fileAbsPath.Substring(fileAbsPath.LastIndexOf('/') + 1);
@@ -171,13 +180,13 @@ namespace DynamicUtil
         }
 
         /// <summary>动态调用一个exe程序
-       /// </summary>
+        /// </summary>
         /// <param name="searchPath">程序集的搜索路径</param>
         /// <param name="exeFullName">程序集的全称如:Demo2, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null</param>
         /// <param name="paras">参数为字符串数组</param>
-       /// <param name="counter">失败重试计数</param>
-       /// <returns></returns>
-        public static Hashtable InvokeExe(string searchPath, string exeFullName, string[] paras, int counter = 0)
+        /// <param name="counter">失败重试计数</param>
+        /// <returns></returns>
+        public static Hashtable InvokeExe(string searchPath, string exeFullName, string[] paras, int counter = 0, string appconfigpath=null)
         {
             Hashtable ht = null;
             try
@@ -190,7 +199,7 @@ namespace DynamicUtil
                         if (!dllManagers.TryGetValue(exeFullName + "[" + searchPath + "]", out obj))
                         {
                             DllManageObj tmp = new DllManageObj();
-                            tmp.Domain = CreateShadowAppDomain(DateTime.Now.ToString("yyyyMMddHHmmssfff") + exeFullName, searchPath);
+                            tmp.Domain = CreateShadowAppDomain(DateTime.Now.ToString("yyyyMMddHHmmssfff") + Guid.NewGuid().ToString().Replace("-", ""), searchPath, appconfigpath);
                             tmp.Remote = CreateRemoteUtil(tmp.Domain);
                             dllManagers[exeFullName + "[" + searchPath + "]"] = tmp;
                             obj = tmp;
@@ -228,7 +237,7 @@ namespace DynamicUtil
         /// <param name="exeFullName">程序集的全称如:Demo2, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null</param>
         /// <param name="paras">参数为字符串数组</param>
         /// <returns></returns>
-        public static Hashtable InvokeExe_Once(string searchPath, string exeFullName, string[] paras)
+        public static Hashtable InvokeExe_Once(string searchPath, string exeFullName, string[] paras, string appconfigpath=null)
         {
             AppDomain domain = null;
             RemoteUtil remote = null;
@@ -236,7 +245,7 @@ namespace DynamicUtil
             Hashtable ht = null;
             try
             {
-                domain = CreateShadowAppDomain(tmpAppName, searchPath);
+                domain = CreateShadowAppDomain(tmpAppName, searchPath, appconfigpath);
                 remote = CreateRemoteUtil(domain);
                 //调用指定类的指定方法
                 ht = remote.InvokeExe(exeFullName, paras);
@@ -262,36 +271,36 @@ namespace DynamicUtil
         /// <summary>动态调用一个程序集,创建新程序域去调用
         /// </summary>
         /// <param name="searchPath">程序集的搜索路径</param>
-        /// <param name="dllFullName">程序集的全称如:Demo2, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null</param>
-        /// <param name="classFullName">执行类名</param>
+        /// <param name="typename">程序集的全称如:Demo2.Program, Demo2, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null</param>
         /// <param name="methodName">执行方法名</param>
         /// <param name="paraTypes">方法参数类型</param>
         /// <param name="paras">方法参数</param>
         /// <param name="counter">失败重试计数</param>
+        /// <param name="appconfigpath">配置文件的路径</param>
         /// <returns></returns>
-        public static Hashtable InvokeDll(string searchPath, string dllFullName, string classFullName, string methodName, Type[] paraTypes, object[] paras, int counter = 0)
+        public static Hashtable InvokeDll(string searchPath, string typename, string methodName, Type[] paraTypes, object[] paras, int counter = 0, string appconfigpath = null)
         {
             Hashtable ht = null;
             DllManageObj obj;
             try
             {
-                if (!dllManagers.TryGetValue(dllFullName + "[" + searchPath + "]", out obj))
+                if (!dllManagers.TryGetValue(typename + "[" + searchPath + "]", out obj))
                 {
                     lock (typeof(MainlUtil))
                     {
-                        if (!dllManagers.TryGetValue(dllFullName + "[" + searchPath + "]", out obj))
+                        if (!dllManagers.TryGetValue(typename + "[" + searchPath + "]", out obj))
                         {
                             DllManageObj tmp = new DllManageObj();
-                            tmp.Domain = CreateShadowAppDomain(DateTime.Now.ToString("yyyyMMddHHmmssfff") + dllFullName, searchPath);
+                            tmp.Domain = CreateShadowAppDomain(DateTime.Now.ToString("yyyyMMddHHmmssfff") + Guid.NewGuid().ToString().Replace("-", ""), searchPath, appconfigpath);
                             tmp.Remote = CreateRemoteUtil(tmp.Domain);
-                            dllManagers[dllFullName + "[" + searchPath + "]"] = tmp;
+                            dllManagers[typename + "[" + searchPath + "]"] = tmp;
                             obj = tmp;
                         }
                     }
                 }
 
                 //调用指定类的指定方法
-                ht = obj.Remote.InvokeDll(dllFullName, classFullName, methodName, paraTypes, paras);
+                ht = obj.Remote.InvokeDll(typename, methodName, paraTypes, paras);
             }
             catch (Exception ex)
             {
@@ -304,13 +313,13 @@ namespace DynamicUtil
                     }
                     counter++;
                     DllManageObj o;
-                    dllManagers.TryRemove(dllFullName + "[" + searchPath + "]", out o);
-                    return InvokeDll(searchPath, dllFullName, classFullName, methodName, paraTypes, paras, counter);
+                    dllManagers.TryRemove(typename + "[" + searchPath + "]", out o);
+                    return InvokeDll(searchPath, typename, methodName, paraTypes, paras, counter, appconfigpath);
                 }
                 if (ex is System.IO.FileNotFoundException)
                 {
                     DllManageObj o;
-                    dllManagers.TryRemove(dllFullName + "[" + searchPath + "]", out o);
+                    dllManagers.TryRemove(typename + "[" + searchPath + "]", out o);
                 }
                 ht = new Hashtable();
                 ht["Success"] = false;
@@ -328,7 +337,7 @@ namespace DynamicUtil
         /// <param name="paraTypes">方法参数类型</param>
         /// <param name="paras">方法参数</param>
         /// <returns></returns>
-        public static Hashtable InvokeDll_Once(string searchPath, string dllFullName, string classFullName, string methodName, Type[] paraTypes, object[] paras)
+        public static Hashtable InvokeDll_Once(string searchPath, string dllFullName, string classFullName, string methodName, Type[] paraTypes, object[] paras, string appconfigpath=null)
         {
             AppDomain domain = null;
             RemoteUtil remote = null;
@@ -336,7 +345,7 @@ namespace DynamicUtil
             string tmpAppName = DateTime.Now.ToString("yyyyMMddHHmmssfff") + Guid.NewGuid().ToString().Replace("-", "");
             try
             {
-                domain = CreateShadowAppDomain(tmpAppName, searchPath);
+                domain = CreateShadowAppDomain(tmpAppName, searchPath, appconfigpath);
                 remote = CreateRemoteUtil(domain);
 
                 //调用指定类的指定方法
@@ -370,7 +379,7 @@ namespace DynamicUtil
         /// <param name="paras">方法参数</param>
         /// <param name="counter">失败重试计数</param>
         /// <returns></returns>
-        public static Hashtable InvokeSrc(string searchPath, string srcCodePath, string classFullName, string methodName, Type[] paraTypes, object[] paras, int counter = 0)
+        public static Hashtable InvokeSrc(string searchPath, string srcCodePath, string classFullName, string methodName, Type[] paraTypes, object[] paras, int counter = 0, string appconfigpath = null)
         {
             Hashtable ht = null;
             DllManageObj obj;
@@ -381,7 +390,7 @@ namespace DynamicUtil
                     if (!dllManagers.TryGetValue(srcCodePath + "[" + searchPath + "]", out obj))
                     {
                         DllManageObj tmp = new DllManageObj();
-                        tmp.Domain = CreateShadowAppDomain(DateTime.Now.ToString("yyyyMMddHHmmssfff") + srcCodePath, searchPath);
+                        tmp.Domain = CreateShadowAppDomain(DateTime.Now.ToString("yyyyMMddHHmmssfff") + Guid.NewGuid().ToString().Replace("-", ""), searchPath, appconfigpath);
                         tmp.Remote = CreateRemoteUtil(tmp.Domain);
                         dllManagers[srcCodePath + "[" + searchPath + "]"] = tmp;
                         obj = tmp;
@@ -423,7 +432,7 @@ namespace DynamicUtil
         /// <param name="paraTypes">方法参数类型</param>
         /// <param name="paras">方法参数</param>
         /// <returns></returns>
-        public static Hashtable InvokeSrc_Once(string searchPath, string srcCodePath, string classFullName, string methodName, Type[] paraTypes, object[] paras)
+        public static Hashtable InvokeSrc_Once(string searchPath, string srcCodePath, string classFullName, string methodName, Type[] paraTypes, object[] paras, string appconfigpath = null)
         {
             Hashtable ht = null;
             AppDomain domain = null;
@@ -431,7 +440,7 @@ namespace DynamicUtil
             string tmpAppName = DateTime.Now.ToString("yyyyMMddHHmmssfff") + Guid.NewGuid().ToString().Replace("-", "");
             try
             {
-                domain = CreateShadowAppDomain(tmpAppName, searchPath);
+                domain = CreateShadowAppDomain(tmpAppName, searchPath, appconfigpath);
                 remote = CreateRemoteUtil(domain);
                 //调用指定类的指定方法
                 ht = remote.InvokeSrc(srcCodePath, classFullName, methodName, paraTypes, paras);
